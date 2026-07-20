@@ -26,9 +26,9 @@ function mulberry32(seed) {
   };
 }
 
-async function run(client, runId, { seed = 1, ops = 120 } = {}) {
+async function run(client, runId, { seed = 1, ops = 120, exclusive = true } = {}) {
   const c = new Checks('ledger');
-  console.log(`\n== Ledger property runner (seed ${seed}, ${ops} ops) ==`);
+  console.log(`\n== Ledger property runner (seed ${seed}, ${ops} ops, ${exclusive ? 'exclusive' : 'shared'} instance) ==`);
   const rnd = mulberry32(seed);
   const pick = (arr) => arr[Math.floor(rnd() * arr.length)];
   const randint = (lo, hi) => lo + Math.floor(rnd() * (hi - lo + 1));
@@ -80,10 +80,11 @@ async function run(client, runId, { seed = 1, ops = 120 } = {}) {
     M.seededByUs += 1000;
   }
   const after = await checkpoint('after member creation');
+  const seedDelta = after && base ? after.total_seeded - base.total_seeded : null;
   c.add(
-    'seeding: each new member adds exactly the seed amount to total_seeded',
-    after && base && after.total_seeded - base.total_seeded === M.seededByUs,
-    `expected +${M.seededByUs}, got +${after && base ? after.total_seeded - base.total_seeded : '?'}`
+    `seeding: each new member adds the seed amount to total_seeded${exclusive ? '' : ' (>=, shared instance)'}`,
+    exclusive ? seedDelta === M.seededByUs : seedDelta >= M.seededByUs,
+    `expected ${exclusive ? '' : '>='}+${M.seededByUs}, got +${seedDelta}`
   );
 
   const memberIds = [...M.members.keys()];
@@ -246,8 +247,12 @@ async function run(client, runId, { seed = 1, ops = 120 } = {}) {
     await exec();
     executed++;
     const cp = await checkpoint(`op ${executed} (${kind.name})`);
-    // Model-vs-server aggregate escrow: exact when nothing else is active.
-    if (cp && cp.escrow_held !== (base.escrow_held || 0) + M.escrowHeld) {
+    // Model-vs-server aggregate escrow equality is only sound with exclusive
+    // access to the instance: on a shared deployment any concurrent member or
+    // harness activity legitimately moves global escrow. In shared mode the
+    // aggregate invariants (zero-sum, non-negativity) and the exact
+    // per-member audits below still apply in full.
+    if (exclusive && cp && cp.escrow_held !== (base.escrow_held || 0) + M.escrowHeld) {
       note('model', `escrow held ${cp.escrow_held} != baseline ${base.escrow_held} + model ${M.escrowHeld}`);
     }
     if (executed % 10 === 0) await audit();

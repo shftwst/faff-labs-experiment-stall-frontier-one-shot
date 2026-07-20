@@ -88,6 +88,10 @@ async function main() {
       results.push(...(await require('./ledger-runner').run(client, runId, {
         seed,
         ops: parseInt(arg('ops', '120'), 10),
+        // A throwaway --local instance is ours alone; a deployed instance may
+        // have concurrent members or harness runs, so strict aggregate
+        // equality checks are opt-in there via --exclusive.
+        exclusive: local || !!arg('exclusive', false),
       })));
     }
     if ((!only || only === 'reviews') && feat.status === 200 && feat.data.reviews) {
