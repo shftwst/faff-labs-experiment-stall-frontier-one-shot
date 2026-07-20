@@ -45,6 +45,13 @@ zero-sum. The release ladder was spot-checked the way an evaluator would:
 25 checks claimed at that tag. Every release's CI run went green on first
 attempt; deploys are fully automated (push → harness → deploy → probe).
 
+One post-release CI run false-positived: the ledger runner's strict aggregate
+escrow-equality check assumes exclusive instance access, and two harness
+invocations overlapped on shared production (the PRD invariants themselves all
+passed in that run). Diagnosed from CI job timings, fixed by giving the runner
+exclusive/shared modes (`0.4.1`), and re-verified green — the kind of
+harness-of-the-harness bug worth having on the record.
+
 ## Notable choices
 
 - **GitHub OAuth via device flow** — OAuth apps can't be registered
@@ -61,7 +68,7 @@ attempt; deploys are fully automated (push → harness → deploy → probe).
 ## Bookkeeping
 
 - [ECONOMICS.md](ECONOMICS.md) / [economics.json](economics.json) — token
-  economics self-measured from the transcript (output 339k; cache reads
-  ~22.6M; uncached input 402), by phase and by tool, with waste analysis.
+  economics self-measured from the transcript (output 411k; cache reads
+  ~30M; uncached input 478), by phase and by tool, with waste analysis.
 - [transcripts/](transcripts/) — the redacted session transcript plus the
   analysis and redaction tooling. No subagents were used.
