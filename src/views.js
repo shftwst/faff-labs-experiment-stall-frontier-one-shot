@@ -73,7 +73,7 @@ function layout({ title, member, body, flash }) {
 <header><nav class="nav">
   <a class="brand" href="/">st<span>all</span></a>
   <a href="/">browse</a>
-  ${member ? `<a href="/sell">sell</a><a href="/me">my stall</a>` : ''}
+  ${member ? `<a href="/sell">sell</a><a href="/threads">messages</a><a href="/me">my stall</a>` : ''}
   <span class="spacer"></span>
   ${
     member

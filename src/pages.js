@@ -149,6 +149,47 @@ router.get('/listings/:id/edit', (req, res) => {
   res.send(layout({ title: 'Edit', member: req.member, body }));
 });
 
+function messagingBlock(l, member, isOwner) {
+  if (!member) return '';
+  if (isOwner) {
+    const threads = db
+      .prepare(
+        `SELECT t.id, m.display_name,
+                (SELECT body FROM messages ms WHERE ms.thread_id = t.id ORDER BY ms.id DESC LIMIT 1) AS last_body
+         FROM threads t JOIN members m ON m.id = t.interested_id
+         WHERE t.listing_id = ? ORDER BY t.id DESC`
+      )
+      .all(l.id);
+    if (!threads.length) return '';
+    return `<div class="card"><h2>Conversations about this listing</h2>
+      ${threads.map((t) => `<p><a href="/threads/${t.id}">${esc(t.display_name)}</a>
+        <span class="muted small">— ${esc((t.last_body || '').slice(0, 80))}</span></p>`).join('')}</div>`;
+  }
+  const mine = db
+    .prepare('SELECT id FROM threads WHERE listing_id = ? AND interested_id = ?')
+    .get(l.id, member.id);
+  if (mine) {
+    return `<div class="card"><p><a class="btn secondary" href="/threads/${mine.id}">View your conversation with the seller</a></p></div>`;
+  }
+  if (!['active', 'reserved'].includes(l.status)) return '';
+  return `<div class="card"><h2>Message the seller</h2>
+    <form id="startThread">
+      <textarea name="body_text" required maxlength="2000" placeholder="Is this still available?"></textarea>
+      <p><button>Send</button> <span class="muted small" id="terr"></span></p>
+    </form>
+    <script>
+    document.getElementById('startThread').onsubmit = async (e) => {
+      e.preventDefault();
+      const r = await fetch('/api/listings/${l.id}/thread', {method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({body_text: e.target.body_text.value})});
+      const d = await r.json();
+      if (!r.ok) { document.getElementById('terr').textContent = d.error || 'failed'; return; }
+      location.href = '/threads/' + d.thread.id;
+    };
+    </script></div>`;
+}
+
 router.get('/listings/:id', (req, res) => {
   const l = getListing(req.params.id);
   if (!visibleTo(l, req.member)) {
@@ -180,6 +221,7 @@ router.get('/listings/:id', (req, res) => {
       <p><button class="secondary" onclick="act('/api/listings/${l.id}/report', 'Reported. Thanks — listings reported by ${config.reportHideThreshold} members are hidden.')">Report listing</button></p>` : ''}
     ${!req.member ? `<p class="muted small"><a href="/login">Sign in</a> to contact the seller.</p>` : ''}
   </div>
+  ${messagingBlock(l, req.member, isOwner)}
   <div id="extras"></div>
   <script>
   async function act(url, msg) {
@@ -236,6 +278,68 @@ router.get('/me', (req, res) => {
       <td class="muted small">${timeAgo(l.created_at)}</td></tr>`).join('')}</table>` : `<p class="muted">Nothing listed yet. <a href="/sell">Sell something</a>.</p>`}
   <div id="deals-slot"></div>`;
   res.send(layout({ title: 'My stall', member: req.member, body }));
+});
+
+router.get('/threads', (req, res) => {
+  if (!req.member) return res.redirect('/login');
+  const rows = db
+    .prepare(
+      `SELECT t.*, l.title AS listing_title, l.owner_id,
+              io.display_name AS interested_name, o.display_name AS owner_name,
+              (SELECT body FROM messages m WHERE m.thread_id = t.id ORDER BY m.id DESC LIMIT 1) AS last_body,
+              (SELECT created_at FROM messages m WHERE m.thread_id = t.id ORDER BY m.id DESC LIMIT 1) AS last_at
+       FROM threads t JOIN listings l ON l.id = t.listing_id
+       JOIN members io ON io.id = t.interested_id JOIN members o ON o.id = l.owner_id
+       WHERE t.interested_id = ? OR l.owner_id = ? ORDER BY last_at DESC`
+    )
+    .all(req.member.id, req.member.id);
+  const body = `<h1>Messages</h1>
+  ${rows.length ? rows.map((t) => {
+    const other = t.owner_id === req.member.id ? t.interested_name : t.owner_name;
+    return `<div class="card" style="padding:12px 16px">
+      <a href="/threads/${t.id}"><strong>${esc(other)}</strong> · ${esc(t.listing_title)}</a>
+      <div class="muted small">${esc((t.last_body || '').slice(0, 100))} · ${t.last_at ? timeAgo(t.last_at) : ''}</div>
+    </div>`;
+  }).join('') : '<p class="muted">No conversations yet. Find something on the <a href="/">board</a> and message the seller.</p>'}`;
+  res.send(layout({ title: 'Messages', member: req.member, body }));
+});
+
+router.get('/threads/:id', (req, res) => {
+  if (!req.member) return res.redirect('/login');
+  const { threadForParticipant } = require('./messages');
+  const t = threadForParticipant(req.params.id, req.member.id);
+  if (!t) {
+    return res.status(404).send(layout({ title: 'Not found', member: req.member, body: '<h1>Thread not found</h1>' }));
+  }
+  const messages = db
+    .prepare(
+      `SELECT m.*, mem.display_name AS sender_name FROM messages m
+       JOIN members mem ON mem.id = m.sender_id WHERE m.thread_id = ? ORDER BY m.id`
+    )
+    .all(t.id);
+  const other = req.member.id === t.owner_id ? t.interested_name : t.owner_name;
+  const body = `
+  <p class="small"><a href="/threads">← all messages</a></p>
+  <h1>${esc(other)} · <a href="/listings/${t.listing_id}">${esc(t.listing_title)}</a></h1>
+  <div class="card">
+    ${messages.map((m) => `<div class="msg ${m.sender_id === req.member.id ? 'mine' : 'theirs'}">
+      <div class="who">${esc(m.sender_name)} · ${timeAgo(m.created_at)}</div>${esc(m.body)}</div>`).join('')}
+    <form id="reply" style="margin-top:14px">
+      <textarea name="body_text" required maxlength="2000" placeholder="Reply…"></textarea>
+      <p><button>Send</button> <span class="muted small" id="rerr"></span></p>
+    </form>
+  </div>
+  <script>
+  document.getElementById('reply').onsubmit = async (e) => {
+    e.preventDefault();
+    const r = await fetch('/api/threads/${t.id}/messages', {method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({body_text: e.target.body_text.value})});
+    if (!r.ok) { const d = await r.json(); document.getElementById('rerr').textContent = d.error || 'failed'; return; }
+    location.reload();
+  };
+  </script>`;
+  res.send(layout({ title: `Chat · ${t.listing_title}`, member: req.member, body }));
 });
 
 module.exports = { router, tile };

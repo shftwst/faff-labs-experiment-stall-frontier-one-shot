@@ -18,11 +18,12 @@ app.get('/healthz', (req, res) => res.json({ ok: true, version: require('../pack
 // Capability flags: which slices of the product this build ships. The harness
 // reads these to know which probes apply.
 app.get('/api/features', (req, res) =>
-  res.json({ listings: true, search: false, messaging: false, offers: false, reviews: false })
+  res.json({ listings: true, search: true, messaging: true, offers: false, reviews: false })
 );
 
 app.use(auth.router);
 app.use(listings.router);
+app.use(require('./messages').router);
 app.use(pages.router);
 
 app.use((err, req, res, next) => {

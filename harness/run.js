@@ -81,6 +81,9 @@ async function main() {
       results.push(...(await require('./authz-probe').run(client, runId)));
     }
     const feat = await client.raw('GET', '/api/features');
+    if ((!only || only === 'search') && feat.status === 200 && feat.data.search) {
+      results.push(...(await require('./search-probe').run(client, runId)));
+    }
     if ((!only || only === 'ledger') && feat.status === 200 && feat.data.offers) {
       results.push(...(await require('./ledger-runner').run(client, runId, {
         seed,

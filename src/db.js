@@ -75,6 +75,48 @@ const migrations = [
       );
     `,
   },
+  {
+    id: '003-search-and-messaging',
+    sql: `
+      CREATE VIRTUAL TABLE listings_fts USING fts5(
+        title, description, content='listings', content_rowid='id'
+      );
+      INSERT INTO listings_fts (rowid, title, description)
+        SELECT id, title, description FROM listings;
+      CREATE TRIGGER listings_ai AFTER INSERT ON listings BEGIN
+        INSERT INTO listings_fts (rowid, title, description)
+        VALUES (new.id, new.title, new.description);
+      END;
+      CREATE TRIGGER listings_ad AFTER DELETE ON listings BEGIN
+        INSERT INTO listings_fts (listings_fts, rowid, title, description)
+        VALUES ('delete', old.id, old.title, old.description);
+      END;
+      CREATE TRIGGER listings_au AFTER UPDATE OF title, description ON listings BEGIN
+        INSERT INTO listings_fts (listings_fts, rowid, title, description)
+        VALUES ('delete', old.id, old.title, old.description);
+        INSERT INTO listings_fts (rowid, title, description)
+        VALUES (new.id, new.title, new.description);
+      END;
+
+      CREATE TABLE threads (
+        id INTEGER PRIMARY KEY,
+        listing_id INTEGER NOT NULL REFERENCES listings(id),
+        interested_id INTEGER NOT NULL REFERENCES members(id),
+        created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+        UNIQUE (listing_id, interested_id)
+      );
+      CREATE TABLE messages (
+        id INTEGER PRIMARY KEY,
+        thread_id INTEGER NOT NULL REFERENCES threads(id),
+        sender_id INTEGER NOT NULL REFERENCES members(id),
+        body TEXT NOT NULL CHECK (length(body) BETWEEN 1 AND 2000),
+        created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+      );
+      CREATE INDEX idx_messages_thread ON messages (thread_id, id);
+      CREATE INDEX idx_threads_interested ON threads (interested_id);
+      CREATE INDEX idx_threads_listing ON threads (listing_id);
+    `,
+  },
 ];
 
 db.exec(`CREATE TABLE IF NOT EXISTS schema_migrations (
