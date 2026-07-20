@@ -33,3 +33,27 @@ instance before deploy and against production after deploy.
 - **Passing set after this release:** {AC1, AC10, AC15}
 - **Harness:** authorization probe (listings + reports): 14/14 checks passing
   locally in CI and against production.
+
+---
+
+## v0.2.0 — Search & messaging (2026-07-20)
+
+**Scope.** Finding things and talking about them. Full-text search (SQLite
+FTS5 over titles and descriptions, trigger-synced) combined with category and
+price-range filters, newest first by default. Per-listing private message
+threads between an interested member and the listing owner — participants
+only, membership enforced server-side on every read and write. Thread inbox,
+conversation view, and seller-side conversation list on the listing page.
+Harness grows a search probe (query-match, filter, and ordering assertions)
+and messaging authorization checks.
+
+- **Tagged commit:** `v0.2.0` → f2beead1fba9ca9900664539ed39f781461b6a24
+- **Deployment:** Fly.io release v3 of app `stall-frontier-one-shot`
+  (https://stall-frontier-one-shot.fly.dev), deployed 2026-07-20T14:07Z by CI run
+  [29749140138](https://github.com/shftwst/faff-labs-experiment-stall-frontier-one-shot/actions/runs/29749140138)
+  (harness → deploy → production probe, all green).
+- **Acceptance criteria brought to passing:**
+  - AC3 — every search result matches the query and active filters, newest first by default.
+- **Passing set after this release:** {AC1, AC3, AC10, AC15}
+- **Harness:** 25/25 checks passing locally in CI and against production
+  (authz probe incl. thread membership; search probe).
