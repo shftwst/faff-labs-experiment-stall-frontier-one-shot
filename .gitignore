@@ -1,0 +1,7 @@
+# NEVER remove .env.claude-box from the ignore list - contains secrets
+.env.claude-box
+node_modules/
+data/
+*.db
+*.db-wal
+*.db-shm

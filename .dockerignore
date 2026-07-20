@@ -1,0 +1,8 @@
+node_modules
+data
+transcripts
+.git
+.github
+harness
+*.md
+.env*

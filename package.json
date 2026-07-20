@@ -1,0 +1,28 @@
+{
+  "name": "stall",
+  "version": "0.1.0",
+  "description": "stall — community marketplace: listings, search, messaging, offers in escrowed credits, reviews",
+  "private": true,
+  "type": "commonjs",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node --watch src/server.js",
+    "harness": "node harness/run.js",
+    "harness:local": "node harness/run.js --local"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/shftwst/faff-labs-experiment-stall-frontier-one-shot.git"
+  },
+  "license": "MIT",
+  "dependencies": {
+    "@aws-sdk/client-s3": "^3.1090.0",
+    "better-sqlite3": "^12.11.1",
+    "express": "^5.2.1",
+    "multer": "^2.2.0"
+  }
+}

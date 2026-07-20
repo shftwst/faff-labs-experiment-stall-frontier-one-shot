@@ -1,0 +1,50 @@
+name: ci-deploy
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+
+jobs:
+  harness:
+    name: verification harness (local instance)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci
+      - name: run harness against throwaway instance
+        run: npm run harness:local
+
+  deploy:
+    name: deploy to fly.io
+    needs: harness
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: superfly/flyctl-actions/setup-flyctl@master
+      - run: flyctl deploy --remote-only
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+
+  probe-production:
+    name: probe deployed instance
+    needs: deploy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci
+      - name: run harness against production
+        run: node harness/run.js --url https://stall-frontier-one-shot.fly.dev --secret "$HARNESS_SECRET" --ops 40
+        env:
+          HARNESS_SECRET: ${{ secrets.HARNESS_SECRET }}
