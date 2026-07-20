@@ -95,3 +95,39 @@ acceptances genuinely overlap in flight.
 - **Passing set after this release:** {AC1, AC2, AC3, AC4, AC5, AC6, AC7, AC8, AC10, AC14, AC15}
 - **Harness:** 40/40 checks passing locally in CI (120 ops, 131 zero-sum
   checkpoints, 4 double-spend rounds) and against production (40 ops).
+
+---
+
+## v0.4.0 — Reviews (2026-07-20)
+
+**Scope.** Trust. Each party to a completed transaction may post exactly one
+review (1–5 rating plus text), only after mutual completion confirmation, and
+reviews are immutable once posted — enforced in the API and independently by
+database triggers that abort any UPDATE or DELETE on the reviews table.
+Public profiles show received reviews with average rating. Harness gains a
+reviews probe covering the completion gate, non-party refusal, one-per-party
+uniqueness, immutability, and the public review feed.
+
+- **Tagged commit:** `v0.4.0` → 12a51367e671ca9eb205731b26925ec28d38807e
+- **Deployment:** Fly.io release v7 of app `stall-frontier-one-shot`
+  (https://stall-frontier-one-shot.fly.dev), deployed 2026-07-20T14:24Z by CI run
+  [29750105888](https://github.com/shftwst/faff-labs-experiment-stall-frontier-one-shot/actions/runs/29750105888)
+  (harness → deploy → production probe, all green).
+- **Acceptance criteria brought to passing:**
+  - AC9 — review before completion refused; exactly one review per party per completed transaction; immutable once posted.
+  - AC11/AC12/AC13 — the release log itself now records ≥3 releases with scope, tagged commit, deployment, and a monotone criteria ladder whose final set is the full set, evidenced by repository and CI/deploy history.
+- **Passing set after this release (full set):** {AC1, AC2, AC3, AC4, AC5, AC6,
+  AC7, AC8, AC9, AC10, AC11, AC12, AC13, AC14, AC15}
+- **Harness:** 49/49 checks passing locally in CI and against production.
+
+---
+
+## Verifying this log from history
+
+- Tags: `git tag -l 'v*'` — each tag's committer date matches its release entry.
+- CI/deploys: the linked Actions runs (harness → deploy → production probe)
+  ran at the recorded times; `fly releases -a stall-frontier-one-shot` shows the
+  matching deployment sequence (fly v1/v3/v5/v7 ↔ v0.1.0/v0.2.0/v0.3.0/v0.4.0).
+- Spot-check a release: `git checkout v0.2.0 && npm ci && npm run harness:local`
+  — the checks that pass there are exactly the criteria claimed at that tag
+  (25 checks; no offer/ledger/review checks exist yet at that point).
