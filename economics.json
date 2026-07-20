@@ -1,0 +1,52 @@
+{
+  "session": {
+    "session_id": "da2cac6b-7f19-4aeb-9354-2c086ebf687d",
+    "model_id": "claude-fable-5",
+    "harness": "Claude Code (claude-box container)",
+    "harness_version": "2.1.215",
+    "transcript_first_event": "2026-07-20T13:48:17.101Z",
+    "transcript_last_event": "2026-07-20T14:23:59.408Z",
+    "transcript_snapshot_note": "The transcript is flushed per turn. This snapshot (committed at transcripts/session-da2cac6b.jsonl) ends at 14:23:59Z, during the final long turn; the post-release verification sweep and this bookkeeping step ran inside that turn and are therefore excluded from all token totals below. No token figures are estimated; everything here is summed from per-message usage fields in the committed snapshot.",
+    "user_turns": 7,
+    "assistant_messages_with_usage": 203,
+    "subagents": 0
+  },
+  "totals": {
+    "input_tokens": 402,
+    "output_tokens": 339061,
+    "cache_creation_input_tokens": 553437,
+    "cache_read_input_tokens": 22644346
+  },
+  "by_phase": [
+    { "phase": "brief + environment survey", "start": "2026-07-20T13:48:51Z", "end": "2026-07-20T13:52:31Z", "wall_clock_minutes": 3.7, "assistant_turns": 36, "input_tokens": 68, "output_tokens": 51641, "cache_creation_input_tokens": 259334, "cache_read_input_tokens": 1584117 },
+    { "phase": "v0.1.0 build (auth, listings, photos, harness v1, infra)", "start": "2026-07-20T13:53:28Z", "end": "2026-07-20T14:00:37Z", "wall_clock_minutes": 7.2, "assistant_turns": 47, "input_tokens": 94, "output_tokens": 98273, "cache_creation_input_tokens": 84499, "cache_read_input_tokens": 4006380 },
+    { "phase": "v0.1.0 deploy, tag, release log", "start": "2026-07-20T14:00:48Z", "end": "2026-07-20T14:04:09Z", "wall_clock_minutes": 3.4, "assistant_turns": 16, "input_tokens": 32, "output_tokens": 16878, "cache_creation_input_tokens": 9020, "cache_read_input_tokens": 1741614 },
+    { "phase": "v0.2.0 build+ship (search, messaging)", "start": "2026-07-20T14:04:32Z", "end": "2026-07-20T14:07:50Z", "wall_clock_minutes": 3.3, "assistant_turns": 27, "input_tokens": 54, "output_tokens": 24211, "cache_creation_input_tokens": 35318, "cache_read_input_tokens": 3226852 },
+    { "phase": "v0.3.0 build+ship (ledger, offers, escrow, property runner)", "start": "2026-07-20T14:08:44Z", "end": "2026-07-20T14:17:27Z", "wall_clock_minutes": 8.7, "assistant_turns": 41, "input_tokens": 82, "output_tokens": 108596, "cache_creation_input_tokens": 115055, "cache_read_input_tokens": 5954639 },
+    { "phase": "v0.4.0 build+ship (reviews) + start of verification tail", "start": "2026-07-20T14:17:43Z", "end": "2026-07-20T14:23:59Z", "wall_clock_minutes": 6.3, "assistant_turns": 36, "input_tokens": 72, "output_tokens": 39462, "cache_creation_input_tokens": 50211, "cache_read_input_tokens": 6130744 },
+    { "phase": "final verification (v0.2.0 tag rebuild spot-check, full production harness, OAuth device-flow check) and bookkeeping", "start": "2026-07-20T14:24:00Z", "end": null, "wall_clock_minutes": null, "assistant_turns": null, "note": "ran inside the final turn, after the committed transcript snapshot; excluded from totals — not estimated" }
+  ],
+  "by_tool": {
+    "note": "calls and result payload sizes are counted directly from the transcript; result sizes are in characters of the recorded tool_result content (token weight of results is not separately reported by the API — character counts are the measured quantity).",
+    "tools": {
+      "Bash": { "calls": 44, "result_chars": 21267 },
+      "Edit": { "calls": 32, "result_chars": 7194 },
+      "Write": { "calls": 25, "result_chars": 5309 },
+      "Read": { "calls": 5, "result_chars": 12859 },
+      "TaskCreate": { "calls": 6, "result_chars": 457 },
+      "TaskUpdate": { "calls": 10, "result_chars": 240 },
+      "ToolSearch": { "calls": 1, "result_chars": 103 }
+    }
+  },
+  "waste_analysis": [
+    { "item": "package.json overwrite blocked by not-yet-read guard; had to cat the npm-init file then rewrite it", "cost": "2 tool calls, ~1.5k output tokens" },
+    { "item": "curl multipart upload smoke test: ';type=image/jpeg' eaten by shell quoting, photo silently rejected; one diagnostic retry with a temp file", "cost": "1 extra tool call cycle, ~2k output tokens" },
+    { "item": "release-log commits re-trigger a full CI deploy of identical code (fly releases v2/v4/v6 deploy the same artifacts as v1/v3/v5)", "cost": "3 redundant CI deploy runs; zero session tokens (runs in GitHub Actions), a few minutes of CI wall clock" },
+    { "item": "pkill-based smoke-server teardown returns exit 144, surfacing three commands as spurious 'errors'", "cost": "cosmetic; no retries needed" }
+  ],
+  "notes": [
+    "Figures are self-measured by summing per-message usage fields from the committed transcript snapshot; the transcript is the authoritative source for verification.",
+    "This bookkeeping step and the session's final message are necessarily excluded from their own totals.",
+    "No retry loops, failed CI runs, or dead-end approaches occurred; the harness passed on first run at every release."
+  ]
+}
