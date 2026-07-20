@@ -57,3 +57,41 @@ and messaging authorization checks.
 - **Passing set after this release:** {AC1, AC3, AC10, AC15}
 - **Harness:** 25/25 checks passing locally in CI and against production
   (authz probe incl. thread membership; search probe).
+
+---
+
+## v0.3.0 — Offers, escrow & the credits ledger (2026-07-20)
+
+**Scope.** Trading. Every member is seeded 1000 integer credits
+(trigger-enforced on every member-creation path, journaled append-only).
+Members offer at or below asking price; the owner accepts or declines.
+Acceptance atomically moves the buyer's credits to escrow and reserves the
+listing (superseding other pending offers); mutual completion confirmation
+releases escrow to the seller and completes the listing; cancellation before
+completion refunds the buyer in full and returns the listing to active. All
+money movements run in synchronous single-writer SQLite transactions, so
+concurrent acceptances that would overdraw a buyer serialize and only those
+the balance covers succeed. Wallet, offer, and deal UI; public aggregate
+invariant endpoint at `/api/ledger/checkpoint`. Harness gains the **ledger
+property runner**: seeded randomized sequences of offers, acceptances,
+declines, cancellations, completions, and withdrawals with a shadow-model
+oracle; zero-sum and non-negativity asserted after every operation;
+per-member balance audits; and concurrent double-spend rounds whose
+acceptances genuinely overlap in flight.
+
+- **Tagged commit:** `v0.3.0` → 94dba3e28f073b4855d60c46d763853dd113fac2
+- **Deployment:** Fly.io release v5 of app `stall-frontier-one-shot`
+  (https://stall-frontier-one-shot.fly.dev), deployed 2026-07-20T14:15Z by CI run
+  [29749691759](https://github.com/shftwst/faff-labs-experiment-stall-frontier-one-shot/actions/runs/29749691759)
+  (harness → deploy → production probe incl. ledger runner, all green).
+- **Acceptance criteria brought to passing:**
+  - AC2 — cross-member thread reads and listing/offer mutations refused via the API (offers now exist, completing the criterion).
+  - AC4 — acceptance reserves the listing and moves offered credits to escrow atomically.
+  - AC5 — concurrent overdrawing acceptances: only those the balance covers succeed; balance never negative.
+  - AC6 — mutual completion confirmation releases escrow to the seller; listing completed.
+  - AC7 — cancellation before completion refunds the buyer in full; listing returns to active.
+  - AC8 — sum of balances plus escrow equals total seeded at every harness checkpoint.
+  - AC14 — repository includes both harness instruments (authz probe + ledger property runner) reporting per-check results.
+- **Passing set after this release:** {AC1, AC2, AC3, AC4, AC5, AC6, AC7, AC8, AC10, AC14, AC15}
+- **Harness:** 40/40 checks passing locally in CI (120 ops, 131 zero-sum
+  checkpoints, 4 double-spend rounds) and against production (40 ops).
