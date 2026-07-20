@@ -117,6 +117,63 @@ const migrations = [
       CREATE INDEX idx_threads_listing ON threads (listing_id);
     `,
   },
+  {
+    id: '004-credits-offers-escrow',
+    sql: `
+      -- Integer credits. Every member is seeded 1000 credits; ledger_meta
+      -- tracks the total ever seeded so the zero-sum invariant is checkable:
+      -- SUM(members.balance) + SUM(held escrow) == ledger_meta.total_seeded.
+      ALTER TABLE members ADD COLUMN balance INTEGER NOT NULL DEFAULT 1000
+        CHECK (balance >= 0);
+      CREATE TABLE ledger_meta (
+        id INTEGER PRIMARY KEY CHECK (id = 1),
+        seed_credits INTEGER NOT NULL,
+        total_seeded INTEGER NOT NULL
+      );
+      INSERT INTO ledger_meta (id, seed_credits, total_seeded)
+        SELECT 1, 1000, 1000 * COUNT(*) FROM members;
+      CREATE TABLE ledger_entries (
+        id INTEGER PRIMARY KEY,
+        kind TEXT NOT NULL CHECK (kind IN ('seed','escrow_hold','escrow_refund','escrow_release')),
+        member_id INTEGER NOT NULL REFERENCES members(id),
+        offer_id INTEGER,
+        delta INTEGER NOT NULL,
+        created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+      );
+      INSERT INTO ledger_entries (kind, member_id, delta)
+        SELECT 'seed', id, 1000 FROM members;
+      -- Seeding is a trigger so every member-creation path stays zero-sum.
+      CREATE TRIGGER members_seed AFTER INSERT ON members BEGIN
+        UPDATE ledger_meta SET total_seeded = total_seeded + seed_credits WHERE id = 1;
+        INSERT INTO ledger_entries (kind, member_id, delta)
+          VALUES ('seed', new.id, (SELECT seed_credits FROM ledger_meta WHERE id = 1));
+      END;
+
+      CREATE TABLE offers (
+        id INTEGER PRIMARY KEY,
+        listing_id INTEGER NOT NULL REFERENCES listings(id),
+        buyer_id INTEGER NOT NULL REFERENCES members(id),
+        amount INTEGER NOT NULL CHECK (amount >= 1),
+        status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN
+          ('pending','accepted','declined','superseded','cancelled','completed')),
+        buyer_confirmed INTEGER NOT NULL DEFAULT 0,
+        seller_confirmed INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+        updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+      );
+      CREATE INDEX idx_offers_listing ON offers (listing_id, status);
+      CREATE INDEX idx_offers_buyer ON offers (buyer_id, status);
+
+      CREATE TABLE escrows (
+        id INTEGER PRIMARY KEY,
+        offer_id INTEGER NOT NULL UNIQUE REFERENCES offers(id),
+        amount INTEGER NOT NULL CHECK (amount >= 1),
+        status TEXT NOT NULL DEFAULT 'held' CHECK (status IN ('held','released','refunded')),
+        created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+        updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+      );
+    `,
+  },
 ];
 
 db.exec(`CREATE TABLE IF NOT EXISTS schema_migrations (

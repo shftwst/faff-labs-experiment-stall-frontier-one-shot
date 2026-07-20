@@ -149,6 +149,80 @@ router.get('/listings/:id/edit', (req, res) => {
   res.send(layout({ title: 'Edit', member: req.member, body }));
 });
 
+function dealPanel(offer, member, ownerId) {
+  const iAmBuyer = offer.buyer_id === member.id;
+  const myConfirm = iAmBuyer ? offer.buyer_confirmed : offer.seller_confirmed;
+  const otherConfirm = iAmBuyer ? offer.seller_confirmed : offer.buyer_confirmed;
+  return `<div class="card"><h2>Deal in progress — ${offer.amount} cr in escrow</h2>
+    <p class="muted small">${iAmBuyer ? 'You are buying' : `${esc(offer.buyer_name)} is buying`} for
+    ${offer.amount} credits, held in escrow. Both parties must confirm completion; either can cancel
+    before then (full refund to the buyer).</p>
+    <p>${myConfirm ? 'You have confirmed. ' : `<button onclick="act('/api/offers/${offer.id}/complete')">Confirm completion</button> `}
+    ${otherConfirm ? '<span class="badge completed">other party confirmed</span> ' : ''}
+    <button class="danger" onclick="if(confirm('Cancel this deal and refund the buyer?'))act('/api/offers/${offer.id}/cancel')">Cancel deal</button></p></div>`;
+}
+
+function offersBlock(l, member, isOwner) {
+  if (!member) return '';
+  if (l.status === 'reserved') {
+    const accepted = db
+      .prepare(
+        `SELECT o.*, b.display_name AS buyer_name FROM offers o
+         JOIN members b ON b.id = o.buyer_id
+         WHERE o.listing_id = ? AND o.status = 'accepted'`
+      )
+      .get(l.id);
+    if (accepted && (accepted.buyer_id === member.id || l.owner_id === member.id)) {
+      return dealPanel(accepted, member, l.owner_id);
+    }
+    return '';
+  }
+  if (l.status !== 'active') return '';
+  if (isOwner) {
+    const pending = db
+      .prepare(
+        `SELECT o.*, b.display_name AS buyer_name, b.id AS bid FROM offers o
+         JOIN members b ON b.id = o.buyer_id
+         WHERE o.listing_id = ? AND o.status = 'pending' ORDER BY o.id DESC`
+      )
+      .all(l.id);
+    if (!pending.length) return '';
+    return `<div class="card"><h2>Offers on this listing</h2>
+      ${pending.map((o) => `<p><strong>${o.amount} cr</strong> from <a href="/profile/${o.bid}">${esc(o.buyer_name)}</a>
+        <button onclick="act('/api/offers/${o.id}/accept')">Accept</button>
+        <button class="secondary" onclick="act('/api/offers/${o.id}/decline')">Decline</button></p>`).join('')}
+      <p class="muted small">Accepting reserves the listing and moves the buyer's credits into escrow.</p></div>`;
+  }
+  const mine = db
+    .prepare(
+      `SELECT * FROM offers WHERE listing_id = ? AND buyer_id = ? AND status = 'pending'`
+    )
+    .get(l.id, member.id);
+  const balance = db.prepare('SELECT balance FROM members WHERE id = ?').get(member.id).balance;
+  return `<div class="card"><h2>Make an offer</h2>
+    ${mine ? `<p>Your pending offer: <strong>${mine.amount} cr</strong>
+      <button class="secondary" onclick="act('/api/offers/${mine.id}/cancel')">Cancel offer</button>
+      <span class="muted small">A new offer replaces it.</span></p>` : ''}
+    <form id="offerForm" class="row">
+      <input type="number" name="amount" min="1" max="${l.price_credits}" step="1" required
+        placeholder="≤ ${l.price_credits}" style="max-width:140px">
+      <button>Offer credits</button>
+      <span class="muted small">asking ${l.price_credits} cr · your balance ${balance} cr</span>
+      <span class="muted small" id="oerr"></span>
+    </form>
+    <script>
+    document.getElementById('offerForm').onsubmit = async (e) => {
+      e.preventDefault();
+      const r = await fetch('/api/listings/${l.id}/offers', {method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({amount: Number(e.target.amount.value)})});
+      const d = await r.json();
+      if (!r.ok) { document.getElementById('oerr').textContent = d.error || 'failed'; return; }
+      location.reload();
+    };
+    </script></div>`;
+}
+
 function messagingBlock(l, member, isOwner) {
   if (!member) return '';
   if (isOwner) {
@@ -221,6 +295,7 @@ router.get('/listings/:id', (req, res) => {
       <p><button class="secondary" onclick="act('/api/listings/${l.id}/report', 'Reported. Thanks — listings reported by ${config.reportHideThreshold} members are hidden.')">Report listing</button></p>` : ''}
     ${!req.member ? `<p class="muted small"><a href="/login">Sign in</a> to contact the seller.</p>` : ''}
   </div>
+  ${offersBlock(l, req.member, isOwner)}
   ${messagingBlock(l, req.member, isOwner)}
   <div id="extras"></div>
   <script>
@@ -268,9 +343,46 @@ router.get('/me', (req, res) => {
        WHERE l.owner_id = ? ORDER BY l.created_at DESC`
     )
     .all(req.member.id);
+  const wallet = db.prepare('SELECT balance FROM members WHERE id = ?').get(req.member.id);
+  const inEscrow = db
+    .prepare(
+      `SELECT COALESCE(SUM(e.amount), 0) held FROM escrows e
+       JOIN offers o ON o.id = e.offer_id
+       WHERE e.status = 'held' AND o.buyer_id = ?`
+    )
+    .get(req.member.id).held;
+  const deals = db
+    .prepare(
+      `SELECT o.*, l.title AS listing_title, l.owner_id, b.display_name AS buyer_name,
+              ow.display_name AS owner_name
+       FROM offers o JOIN listings l ON l.id = o.listing_id
+       JOIN members b ON b.id = o.buyer_id JOIN members ow ON ow.id = l.owner_id
+       WHERE (o.buyer_id = ? OR l.owner_id = ?)
+         AND o.status IN ('pending','accepted','completed')
+       ORDER BY o.updated_at DESC LIMIT 40`
+    )
+    .all(req.member.id, req.member.id);
+  const dealRow = (o) => {
+    const mineAsBuyer = o.buyer_id === req.member.id;
+    const role = mineAsBuyer ? 'buying' : 'selling';
+    const other = mineAsBuyer ? o.owner_name : o.buyer_name;
+    return `<tr><td><a href="/listings/${o.listing_id}">${esc(o.listing_title)}</a></td>
+      <td>${role} · ${esc(other)}</td><td>${o.amount} cr</td>
+      <td><span class="badge ${o.status === 'accepted' ? 'reserved' : esc(o.status)}">${esc(o.status)}</span>
+      ${o.status === 'accepted' ? `<span class="muted small">${o.buyer_confirmed ? '✓buyer' : ''} ${o.seller_confirmed ? '✓seller' : ''}</span>` : ''}</td></tr>`;
+  };
   const body = `
   <h1>My stall</h1>
-  <div id="wallet-slot"></div>
+  <div class="card row" style="justify-content:space-between">
+    <div><h2 style="margin:0">Wallet</h2>
+      <span class="price" style="font-size:26px">${wallet.balance} cr</span>
+      <span class="muted small">available${inEscrow ? ` · ${inEscrow} cr in escrow on your purchases` : ''}</span>
+    </div>
+    <a class="btn secondary" href="/api/ledger/checkpoint">ledger checkpoint ↗</a>
+  </div>
+  ${deals.length ? `<h2>My deals</h2><table>
+    <tr><th>Listing</th><th>With</th><th>Amount</th><th>Status</th></tr>
+    ${deals.map(dealRow).join('')}</table>` : ''}
   <h2>My listings</h2>
   ${mine.length ? `<table><tr><th>Title</th><th>Price</th><th>Status</th><th>Listed</th></tr>
     ${mine.map((l) => `<tr><td><a href="/listings/${l.id}">${esc(l.title)}</a>${l.hidden ? ' <span class="badge">hidden</span>' : ''}</td>
