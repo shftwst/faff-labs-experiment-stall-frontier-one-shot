@@ -174,6 +174,30 @@ const migrations = [
       );
     `,
   },
+  {
+    id: '005-reviews',
+    sql: `
+      CREATE TABLE reviews (
+        id INTEGER PRIMARY KEY,
+        offer_id INTEGER NOT NULL REFERENCES offers(id),
+        reviewer_id INTEGER NOT NULL REFERENCES members(id),
+        subject_id INTEGER NOT NULL REFERENCES members(id),
+        rating INTEGER NOT NULL CHECK (rating BETWEEN 1 AND 5),
+        body TEXT NOT NULL CHECK (length(body) <= 1000),
+        created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+        UNIQUE (offer_id, reviewer_id)
+      );
+      CREATE INDEX idx_reviews_subject ON reviews (subject_id, id DESC);
+      -- Immutability at the schema level: posted reviews cannot be updated or
+      -- deleted, whatever any future application code does.
+      CREATE TRIGGER reviews_immutable_u BEFORE UPDATE ON reviews BEGIN
+        SELECT RAISE(ABORT, 'reviews are immutable');
+      END;
+      CREATE TRIGGER reviews_immutable_d BEFORE DELETE ON reviews BEGIN
+        SELECT RAISE(ABORT, 'reviews are immutable');
+      END;
+    `,
+  },
 ];
 
 db.exec(`CREATE TABLE IF NOT EXISTS schema_migrations (

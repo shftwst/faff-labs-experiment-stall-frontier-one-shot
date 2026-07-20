@@ -1,6 +1,6 @@
 {
   "name": "stall",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "stall — community marketplace: listings, search, messaging, offers in escrowed credits, reviews",
   "private": true,
   "type": "commonjs",

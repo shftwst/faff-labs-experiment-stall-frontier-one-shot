@@ -177,6 +177,38 @@ function offersBlock(l, member, isOwner) {
     }
     return '';
   }
+  if (l.status === 'completed') {
+    const done = db
+      .prepare(
+        `SELECT o.*, ow.id AS owner_id FROM offers o
+         JOIN listings li ON li.id = o.listing_id JOIN members ow ON ow.id = li.owner_id
+         WHERE o.listing_id = ? AND o.status = 'completed'`
+      )
+      .get(l.id);
+    if (!done || (done.buyer_id !== member.id && done.owner_id !== member.id)) return '';
+    const already = db
+      .prepare('SELECT 1 FROM reviews WHERE offer_id = ? AND reviewer_id = ?')
+      .get(done.id, member.id);
+    if (already) return '<div class="card"><p class="muted">Deal completed — you\'ve left your review. Reviews are immutable once posted.</p></div>';
+    return `<div class="card"><h2>Deal completed — leave your review</h2>
+      <p class="muted small">One review per party per transaction; immutable once posted.</p>
+      <form id="revForm">
+        <label>Rating</label><select name="rating">${[5, 4, 3, 2, 1].map((n) => `<option value="${n}">${'★'.repeat(n)}${'☆'.repeat(5 - n)}</option>`).join('')}</select>
+        <label>Review</label><textarea name="body" required maxlength="1000"></textarea>
+        <p><button>Post review</button> <span class="muted small" id="rverr"></span></p>
+      </form>
+      <script>
+      document.getElementById('revForm').onsubmit = async (e) => {
+        e.preventDefault();
+        const r = await fetch('/api/offers/${done.id}/review', {method:'POST',
+          headers:{'Content-Type':'application/json'},
+          body: JSON.stringify({rating: Number(e.target.rating.value), body: e.target.body.value})});
+        const d = await r.json();
+        if (!r.ok) { document.getElementById('rverr').textContent = d.error || 'failed'; return; }
+        location.reload();
+      };
+      </script></div>`;
+  }
   if (l.status !== 'active') return '';
   if (isOwner) {
     const pending = db
@@ -310,6 +342,30 @@ router.get('/listings/:id', (req, res) => {
   res.send(layout({ title: l.title, member: req.member, body }));
 });
 
+function reviewsSection(memberId) {
+  const hasReviews = !!db
+    .prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'reviews'")
+    .get();
+  if (!hasReviews) return '';
+  const rows = db
+    .prepare(
+      `SELECT r.*, rv.display_name AS reviewer_name, l.title AS listing_title, l.id AS lid
+       FROM reviews r JOIN members rv ON rv.id = r.reviewer_id
+       JOIN offers o ON o.id = r.offer_id JOIN listings l ON l.id = o.listing_id
+       WHERE r.subject_id = ? ORDER BY r.id DESC LIMIT 50`
+    )
+    .all(memberId);
+  const avg = db.prepare('SELECT AVG(rating) a, COUNT(*) n FROM reviews WHERE subject_id = ?').get(memberId);
+  return `<h2>Reviews ${avg.n ? `<span class="stars">${'★'.repeat(Math.round(avg.a))}</span>
+    <span class="muted small">${Math.round(avg.a * 10) / 10} from ${avg.n}</span>` : ''}</h2>
+  ${rows.length ? rows.map((r) => `<div class="card" style="padding:12px 16px">
+      <span class="stars">${'★'.repeat(r.rating)}${'☆'.repeat(5 - r.rating)}</span>
+      <strong>${esc(r.reviewer_name)}</strong>
+      <span class="muted small">on <a href="/listings/${r.lid}">${esc(r.listing_title)}</a> · ${timeAgo(r.created_at)}</span>
+      <p style="margin:6px 0 0">${esc(r.body)}</p>
+    </div>`).join('') : '<p class="muted">No reviews yet.</p>'}`;
+}
+
 router.get('/profile/:id', (req, res) => {
   const m = db.prepare('SELECT * FROM members WHERE id = ?').get(req.params.id);
   if (!m) return res.status(404).send(layout({ title: 'Not found', member: req.member, body: '<h1>No such member</h1>' }));
@@ -330,7 +386,7 @@ router.get('/profile/:id', (req, res) => {
   </div>
   <h2>Active listings</h2>
   ${listings.length ? `<div class="grid">${listings.map(tile).join('')}</div>` : '<p class="muted">None right now.</p>'}
-  <div id="reviews-slot"></div>`;
+  ${reviewsSection(m.id)}`;
   res.send(layout({ title: m.display_name, member: req.member, body }));
 });
 
